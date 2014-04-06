@@ -1,0 +1,17 @@
+Idea: "abstract strings"
+
+a b c d b f
+a w q d w q
+
+a X Y d X Q
+
+Problem:
+Which strings should be grouped together?
+
+- Maybe group strings by length?
+- Maybe there's no need for abstraction?
+- Maybe abstraction is not needed?
+
+
+let changes = ... github
+let 

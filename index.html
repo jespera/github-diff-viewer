@@ -1,0 +1,183 @@
+<html>
+<head>
+	<title>github-diff-viewer</title>
+	<script type="text/javascript" src="scripts/underscore.js"></script>
+	<script type="text/javascript" src="scripts/base64.js"></script>
+	<script type="text/javascript" src="scripts/github.js"></script>
+
+</head>
+<body>
+<div id="setup" style="background-color: #f0f0f0; padding: 1em;">
+	<h1>Setup</h1>
+	<h2>User</h2>
+	<input id="user" type="text" value="jespera" />
+	<input id="password" type="password" value="" placeholder="Enter password" />
+	<h2>Repository<h2>
+	<input id="repo" type="text" value="" />
+	<h2>Organization</h2>
+	<input id="org" type="text" value="" />
+	<h1>Refs</h1>
+	<input id="src" type="text" value="master" />
+	<input id="tgt" type="text" value="foo" />
+	<h1>Sorting &amp; grouping</h1>
+	Group changes by:
+	<select id="groupBy">
+		<option value="fileType">FileType</option>
+		<option value="noGroups">Don't group changes</option>
+	</select>
+	Sort groups by:
+	<select id="sortBy">
+		<option value="mostChanged" selected>Most changes</option>
+		<option value="fewestChanged">Fewest changes</option>
+		<option value="asis">As-is</option>
+	</select>
+	<hr />
+	<input type="submit" onclick="getChanges()" />
+</div>
+<div id="changes">
+</div>
+<script type="text/javascript">
+
+	var Diff = function( diffStr ) {
+		var _internalStr = diffStr.trim();
+
+		var hunkSeparator = /\@\@[^@]*\@\@/;
+
+		var HunkLine = function ( hunkLineStr ) {
+			var _internalStr = hunkLineStr.trim();
+
+			function isRemove( str ) {
+				return str.match(/^-/);
+			};
+
+			function isAdd( str ) { 
+				return str.match(/^\+/);
+			};
+
+			this.GetType = function() {
+				if ( isAdd( _internalStr ) ) {
+					return "+";
+				}
+				if ( isRemove( _internalStr ) ) {
+					return "-"
+				}
+				else {
+					return "=";
+				}
+			};
+		}
+
+		var DiffHunk = function( hunkLines ) {
+			this.GetLines = function() {
+				return _.map( hunkLines, function ( str ) {
+					return new HunkLine( str );
+				});
+			};
+		};
+
+		this.getHunks = function() {
+			var hunksAsString = _.filter(
+				diffStr.split(hunkSeparator),
+				function(line) { return line.trim() !== ""});
+			return _.map( hunksAsString, function ( hunkLines ) {
+				return new DiffHunk( hunkLines );
+			});
+		};
+	}
+	
+  groupMap = {};
+
+  github = new Github({
+			username: document.getElementById('user').value,
+			password: document.getElementById('password').value,
+			auth: "basic"
+		});
+
+  function elemClick(id) {
+  	console.log("clicked div with id " + id);
+  	if ( groupMap[id] ) {
+  		groupMap[id].style.display = "block";
+  		delete groupMap[id];
+  	} else {
+  		var groupElem = document.getElementById(id+"Wrap");
+  		groupMap[id] = groupElem;
+  		groupElem.style.display = "none";
+  	}
+  }
+
+  function getSortFn( sortValue ) {
+  	switch ( sortValue ) {
+  		case "mostChanged":
+  			return function(a,b) { return b.changes - a.changes };
+  		case "fewestChanged":
+  			return function(a,b) { return a.changes - b.changes };
+  		default:
+  			return function(a,b) { return 0};
+  	}
+  }
+
+	function getChanges() {
+		var srcElem = document.getElementById('src');
+		var srcValue = srcElem.value;
+		var tgtElem = document.getElementById('tgt');
+		var tgtValue = tgtElem.value;
+		var orgElem = document.getElementById('org');
+		var orgValue = orgElem.value;
+		var sortElem = document.getElementById('sortBy');
+		var sortValue = sortElem.value;
+		var groupElem = document.getElementById('groupBy');
+		var groupValue = groupElem.value;
+
+		github = new Github({
+			username: document.getElementById('user').value,
+			password: document.getElementById('password').value,
+			auth: "basic"
+		});
+
+		var repo = github.getRepo(orgValue, document.getElementById('repo').value);
+
+		repo.compare( srcValue, tgtValue, function(err,diff) {
+			if ( err ) {
+				console.log("Error: " + JSON.stringify(err));
+				return;
+			} 
+			// console.log("diff:");
+			// console.log(JSON.stringify(diff));
+			console.log("files changed: " + JSON.stringify(diff.files.length));
+			var changesElem = document.getElementById('changes');
+			var str = "";
+
+			var groupedChanges = 
+				groupValue === "fileType" ?
+					_.groupBy(diff.files, function(fileChange) {
+						var ftype = fileChange.filename.split('.').pop();
+						if ( ftype === fileChange.filename ) {
+							return "Other";	
+						} 
+						return ftype;
+					}) :
+					{ "All changes" : diff.files };
+
+			for(var group in groupedChanges) {
+				str += "<div>";
+				str += "<h2 onclick='elemClick(\""+group+"\")' id=\""+group+"\">." + group + "</h2>";
+				str += "<div id=\"" + group + "Wrap\">"
+				var files = groupedChanges[group];
+				files.sort( getSortFn(sortValue) );
+				_.forEach( files, function(file) {
+					str += "<strong>" + file.filename + "</strong>" + "<br/>";
+					str += "<xmp>" + file.patch + "</xmp>";
+					// var ndiff = new Diff( file.patch );
+					// var hunks = ndiff.getHunks();
+					// console.log("hunks("+file.filename+"): " + hunks.length);
+				});
+				str += "</div>";
+				str += "</div>";
+			}
+			changesElem.innerHTML = str;
+		});	
+	}
+	
+</script>
+</body>
+</html>
